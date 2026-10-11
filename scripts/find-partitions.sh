@@ -16,8 +16,10 @@ done
 
 say
 say "=== Which directory is the running app using? ==="
-# The path contains spaces, so cut everything from --user-data-dir= up to the next ' --' flag.
-RUNNING="$(ps aux 2>/dev/null | grep -o -- '--user-data-dir=.*' | head -1 | sed -E 's/--user-data-dir=//; s/ --.*//' || true)"
+# Restrict to Claude.app, and cut everything from --user-data-dir= up to the next ' --' flag
+# (the path contains spaces).
+RUNNING="$(ps aux 2>/dev/null | grep 'Applications/Claude.app' | grep -v grep \
+  | grep -o -- '--user-data-dir=.*' | head -1 | sed -E 's/--user-data-dir=//; s/ --.*//' || true)"
 if [ -n "${RUNNING}" ]; then
   say "  ${RUNNING}"
 else
