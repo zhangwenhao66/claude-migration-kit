@@ -134,6 +134,8 @@ which drives the user's own Chrome (with their logins) and needs no Anthropic ac
 also lists the non-obvious fixes required to make it usable (single-instance bug, a hanging tool,
 focus stealing, robot-detectable clicks, accidental new windows).
 
+Full checklist for steps 3–4: `docs/05-verification.md`.
+
 ### Step 5 — Clean up
 
 Tell the user:

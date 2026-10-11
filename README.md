@@ -52,6 +52,7 @@ In 3p mode the app uses a **separate data directory** (`Claude-3p`) — same pro
 | `docs/02-migration.md` | Step-by-step migration and verification. |
 | `docs/03-browser-bridge.md` | Browser automation after migration — and the five fixes it needs. |
 | `docs/04-pitfalls.md` | Everything that bit us, so it doesn't bite you. |
+| `docs/05-verification.md` | The checklist: how to actually confirm it worked, including the focus check. |
 
 Install the skill:
 
@@ -151,6 +152,7 @@ Anthropic 登录。3p 模式下 App 用的是**另一个数据目录**（`Claude
 | `docs/02-migration.md` | 逐步迁移与验收。 |
 | `docs/03-browser-bridge.md` | 迁移后的浏览器自动化——以及它需要的 5 处修复。 |
 | `docs/04-pitfalls.md` | 我们踩过的所有坑，让你不用再踩一遍。 |
+| `docs/05-verification.md` | 验收清单：怎么确认真的迁好了，含焦点安全检查。 |
 
 安装技能：
 
