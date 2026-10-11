@@ -68,9 +68,12 @@ In 3p mode the **Code** partition uses the full UUIDs, but the **Cowork** partit
 **truncated** 8-character directory names:
 
 ```
-Claude-3p/claude-code-sessions/1b032dcd-2012-4d57-b04e-0376155b412d/00000000-0000-4000-8000-000000000001/
-Claude-3p/local-agent-mode-sessions/1b032dcd/00000000/
+Claude-3p/claude-code-sessions/<accountUUID>/00000000-0000-4000-8000-000000000001/
+Claude-3p/local-agent-mode-sessions/<accountUUID-short>/00000000/
 ```
+
+(3p mode uses a synthetic account UUID and the placeholder org
+`00000000-0000-4000-8000-000000000001`.)
 
 If you build the Cowork target path from the same UUIDs as the Code path, it will not exist. Read
 the real directory names with `ls` instead of constructing them.
