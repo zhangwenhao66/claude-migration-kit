@@ -94,8 +94,9 @@ if [ -f "$ROOT/.backup-done" ]; then
 else
   BK="$ROOT/backup-$STAMP"; mkdir -p "$BK"
   echo "--- backup (APFS clone) -> ${BK}"
-  cp -Rpc "$APP_NEW" "$BK/app-data" 2>"$BK/.err1" || true
-  cp -Rpc "$HOME/.claude" "$BK/dot-claude" 2>"$BK/.err2" || true
+  # -c clones (instant, near-zero space) but only works on APFS; fall back to a real copy.
+  cp -Rpc "$APP_NEW" "$BK/app-data" 2>"$BK/.err1" || cp -Rp "$APP_NEW" "$BK/app-data" 2>>"$BK/.err1" || true
+  cp -Rpc "$HOME/.claude" "$BK/dot-claude" 2>"$BK/.err2" || cp -Rp "$HOME/.claude" "$BK/dot-claude" 2>>"$BK/.err2" || true
   FAIL=0
   for pair in "$APP_NEW|$BK/app-data" "$HOME/.claude|$BK/dot-claude"; do
     a="$(find "${pair%%|*}" 2>/dev/null | wc -l | tr -d ' ')"
