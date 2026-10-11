@@ -73,7 +73,7 @@ These mirror the safety design of the scripts in `scripts/`. Do not skip them.
 
 Copy `scripts/config.example.sh` to `scripts/config.sh` and fill in the source/target
 account+org UUIDs. Note: in 3p mode the **Cowork** partition uses **truncated** UUID directory
-names (`1b032dcd/00000000`) while the Code partition uses the full UUIDs. The script reads both
+names (`a1b2c3d4/00000000`) while the Code partition uses the full UUIDs. The script reads both
 from config; get them exactly right.
 
 ### Step 2 — Back up and migrate

@@ -14,7 +14,7 @@ DST_ACC="00000000-0000-0000-0000-000000000000"
 DST_ORG="00000000-0000-0000-0000-000000000000"
 
 # ---- Cowork (Chat/Cowork tab) uses its own account/org directory names ----
-# In third-party ("3p") mode these are TRUNCATED to 8 characters, e.g. "1b032dcd" and "00000000".
+# In third-party ("3p") mode these are TRUNCATED to 8 characters, e.g. "a1b2c3d4" and "00000000".
 # Read the real names with: ls "$HOME/Library/Application Support/Claude-3p/local-agent-mode-sessions/"
 # If you do not want to migrate Cowork, set MIGRATE_COWORK=0.
 MIGRATE_COWORK=1
