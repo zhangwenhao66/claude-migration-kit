@@ -112,6 +112,47 @@ Reinstall them from the marketplace.
 Published Artifacts and claude.ai web chats are tied to the old account. Say so plainly instead of
 letting the user keep hoping.
 
+## Environment
+
+### A "system proxy" does not reach command-line tools
+
+If the machine uses a proxy app (Clash, Surge, …) in **system proxy** mode, only applications that
+honour the system proxy setting use it — typically just browsers. `curl`, `python`, `wget` and
+anything else started from a shell connect **directly** and therefore fail or time out for blocked
+hosts.
+
+Symptom: the browser opens Google fine, but every script that talks to Google times out — and it
+looks intermittent, because it depends on whether the shell happened to have a proxy variable set.
+In one migration this made an entire SEO automation suite report `TimeoutError` on 13/13 hosts while
+the browser channel worked perfectly.
+
+**Fix:** export the proxy for shells. Put it in `~/.zshenv` so non-interactive shells (which is what
+scheduled tasks use) get it too:
+
+```sh
+# ~/.zshenv — only when the proxy port is actually listening, so a stopped proxy
+# does not silently point every tool at a dead endpoint
+if nc -z -G 1 127.0.0.1 7933 >/dev/null 2>&1; then
+  export HTTP_PROXY="http://127.0.0.1:7933"
+  export HTTPS_PROXY="http://127.0.0.1:7933"
+  export http_proxy="http://127.0.0.1:7933"
+  export https_proxy="http://127.0.0.1:7933"
+  export NO_PROXY="localhost,127.0.0.1,::1,*.local,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+  export no_proxy="$NO_PROXY"
+fi
+```
+
+Verify from a fresh non-interactive shell, not the one you are sitting in:
+
+```bash
+zsh -c 'echo $HTTPS_PROXY; curl -s -o /dev/null -w "%{http_code}\n" https://www.google.com'
+```
+
+Child processes inherit it, so `bash script.sh` and `python3 script.py` are covered too.
+
+The alternative is to switch the proxy app to **TUN mode**, which routes all traffic at the network
+layer and needs no environment variables — at the cost of taking over the whole machine's routing.
+
 ## Shell-script landmines
 
 These are not specific to migration, but they are exactly the kind of bug that makes a migration
