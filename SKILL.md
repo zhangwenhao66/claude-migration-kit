@@ -122,6 +122,13 @@ source list, which is deliberately neutral: do **not** reorder by task name to p
 tasks first. The script leaves the missed-run floor in place, so enabling later still cannot fire a
 backlog.
 
+### Step 3.5 — If the new account is a gateway (3p) deployment
+
+Read `docs/06-gateway-mode.md` before verifying. Several things behave differently and are
+invisible until a task runs: server-side tools (WebSearch) are provided by the gateway and may
+be disabled there, the model catalog may differ, and rate limits are the gateway's. Verify web
+search from a *scheduled task*, not just interactively — it can work in one and fail in the other.
+
 ### Step 4 — Browser automation
 
 This is where most migrations silently break. Chrome extension pairing is **account-scoped**, so it

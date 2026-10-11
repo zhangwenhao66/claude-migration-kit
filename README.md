@@ -53,6 +53,7 @@ In 3p mode the app uses a **separate data directory** (`Claude-3p`) — same pro
 | `docs/03-browser-bridge.md` | Browser automation after migration — and the five fixes it needs. |
 | `docs/04-pitfalls.md` | Everything that bit us, so it doesn't bite you. |
 | `docs/05-verification.md` | The checklist: how to actually confirm it worked, including the focus check. |
+| `docs/06-gateway-mode.md` | **Gateway/3p accounts**: what is different, and the traps that only appear there (server-side tools, the extension, model catalog, rate limits). |
 
 Install the skill:
 
@@ -153,6 +154,7 @@ Anthropic 登录。3p 模式下 App 用的是**另一个数据目录**（`Claude
 | `docs/03-browser-bridge.md` | 迁移后的浏览器自动化——以及它需要的 5 处修复。 |
 | `docs/04-pitfalls.md` | 我们踩过的所有坑，让你不用再踩一遍。 |
 | `docs/05-verification.md` | 验收清单：怎么确认真的迁好了，含焦点安全检查。 |
+| `docs/06-gateway-mode.md` | **gateway/3p 账号专有**：哪些东西不一样，以及只在这种模式下才出现的坑（服务端工具、扩展、模型目录、限流）。 |
 
 安装技能：
 
@@ -181,7 +183,8 @@ bash scripts/restore-enabled.sh --dry-run
 bash scripts/restore-enabled.sh --limit 5
 ```
 
-浏览器自动化是单独一章：[docs/03-browser-bridge.md](docs/03-browser-bridge.md)。
+两章建议在收尾前读：[docs/03-browser-bridge.md](docs/03-browser-bridge.md)（浏览器自动化）和
+[docs/06-gateway-mode.md](docs/06-gateway-mode.md)（如果新账号是 gateway 的）。
 
 ### 什么能保住
 
