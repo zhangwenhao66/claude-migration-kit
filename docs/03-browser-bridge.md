@@ -124,6 +124,31 @@ window**; with a `tabId` it navigates that tab. For "one tab per session" behavi
 tab id you were given and reuse it: `navigate` replaces the current tab's content, while a
 deliberate "open a new tab" action passes no `tabId`.
 
+### 6. Two browser MCP servers registered → your defaults get bypassed
+
+This one only bites *after* you have set the four fixes above up, which makes it easy to miss.
+
+If you register **both** the raw bridge (`chrome-mcp`) and a wrapper that applies defaults
+(`chrome-compat`), the agent may call either — and it will happily call the raw one, because that is
+where the `chrome_*` names live. Every default is then gone: focus stealing comes back, clicks lose
+their `mousemove`, windows start multiplying again.
+
+Observed: after a wrapper was installed, task runs still showed 27 calls to
+`mcp__chrome-mcp__chrome_javascript`, 9 to `mcp__chrome-mcp__chrome_navigate` and 7 to
+`mcp__chrome-mcp__chrome_click_element` — all raw — while only a handful went through the wrapper.
+
+**Fix:** register **exactly one** browser MCP. Make the wrapper expose the raw `chrome_*` names too
+(fetch the upstream tool list and re-expose it), then remove the raw server from the config. Then
+whichever name the agent picks, the defaults apply.
+
+Verify by checking what a task actually called — not by reading the config:
+
+```bash
+grep -oE 'mcp__[a-zA-Z0-9_-]+__[a-zA-Z0-9_]+' <session>.jsonl | sort | uniq -c | sort -rn | head
+```
+
+Every browser call should be under the wrapper's server name.
+
 ## Two more small traps
 
 - `chrome_navigate` prepends `www.` to hostnames, which mangles IP addresses
