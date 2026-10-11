@@ -172,6 +172,23 @@ names), apply these defaults centrally:
 | current tab | reuse the session's tab for `navigate`; open a new one only on explicit request |
 | `chrome_read_page` | removed from the tool list |
 
+### Close the remaining holes with an allowlist
+
+`background: true` only covers the tools that accept it, and it is easy to forget. The durable fix
+is to make the wrapper refuse anything it has not verified:
+
+- keep an **allowlist** of tools confirmed not to steal focus, and reject the rest with a message
+  listing what is allowed (bookmark UI, history, GIF recorder, userscript injection, … — all
+  unverified, all blocked);
+- block `chrome_switch_tab` by default — **but not permanently**. Its only job is to activate a tab,
+  which is exactly what you want when **the user** needs to look at or interact with a page
+  (captcha, payment confirmation, login, "check this before I continue"). Automation never needs it:
+  pass `tabId` and the operation happens in the background. So: allowed, documented, and expected to
+  be used only for that one purpose.
+
+Verified with a full pass (navigate → read → find → fill → click → screenshot → scroll → JS → text)
+on a background tab: **the user's active tab never changed**.
+
 ## Verify it end-to-end
 
 Ask the user to open a new session and try:
