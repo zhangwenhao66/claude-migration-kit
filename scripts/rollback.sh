@@ -5,6 +5,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$HERE")"   # where migrate.sh wrote its manifests
+if [ ! -f "$HERE/config.sh" ]; then
+  echo "config.sh not found. Copy config.example.sh to config.sh and fill it in." >&2
+  exit 1
+fi
 # shellcheck source=/dev/null
 source "$HERE/config.sh"
 
@@ -30,7 +35,7 @@ if [ -n "${LATEST}" ]; then
 fi
 
 del=0; keep=0
-if [ -f "$HERE/manifest-sessions.txt" ]; then
+if [ -f "$ROOT/manifest-sessions.txt" ]; then
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     # only delete paths we created, inside the target partition
@@ -47,22 +52,25 @@ if [ -f "$HERE/manifest-sessions.txt" ]; then
       keep=$((keep+1)); continue
     fi
     [ -e "$p" ] && { rm -f "$p"; del=$((del+1)); }
-  done < "$HERE/manifest-sessions.txt"
+  done < "$ROOT/manifest-sessions.txt"
 fi
 echo "sessions: deleted=${del} kept(used since)=${keep}"
 
-if [ -f "$HERE/manifest-cowork.txt" ]; then
+if [ -f "$ROOT/manifest-cowork.txt" ]; then
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     case "$p" in
       "${COW_DST}"/*) ;;
       *) echo "refusing (unexpected path): $p"; continue ;;
     esac
-    case "$p" in
-      *"${SRC_ACC_COW}"*) echo "refusing (source path): $p"; continue ;;
-    esac
+    # only treat it as a source path if we actually know the source dir name
+    if [ -n "${SRC_ACC_COW:-}" ]; then
+      case "$p" in
+        *"${SRC_ACC_COW}"*) echo "refusing (source path): $p"; continue ;;
+      esac
+    fi
     [ -e "$p" ] && rm -rf "$p"
-  done < "$HERE/manifest-cowork.txt"
+  done < "$ROOT/manifest-cowork.txt"
   echo "cowork cleaned"
 fi
 

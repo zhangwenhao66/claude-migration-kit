@@ -15,14 +15,21 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$HERE")"   # generated artifacts (backups, manifests, logs) land here
+if [ ! -f "$HERE/config.sh" ]; then
+  echo "config.sh not found." >&2
+  echo "  1. Run:  bash \"$HERE/find-partitions.sh\"" >&2
+  echo "  2. Then: cp \"$HERE/config.example.sh\" \"$HERE/config.sh\"  and fill it in." >&2
+  exit 1
+fi
 # shellcheck source=/dev/null
 source "$HERE/config.sh"
 
 MODE="${1:-check}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-LOG="$HERE/migration-$MODE-$STAMP.log"
-MAN_S="$HERE/manifest-sessions.txt"
-MAN_C="$HERE/manifest-cowork.txt"
+LOG="$ROOT/migration-$MODE-$STAMP.log"
+MAN_S="$ROOT/manifest-sessions.txt"
+MAN_C="$ROOT/manifest-cowork.txt"
 
 die() { echo "ABORT: $*" >&2; exit 1; }
 cnt() { find "$1" -maxdepth 1 -name 'local_*.json' 2>/dev/null | wc -l | tr -d ' '; }
@@ -81,11 +88,11 @@ fi
 echo "OK Claude is not running"
 
 # ------------------------------------------------------------- backup
-if [ -f "$HERE/.backup-done" ]; then
-  BK="$(cat "$HERE/.backup-done")"
+if [ -f "$ROOT/.backup-done" ]; then
+  BK="$(cat "$ROOT/.backup-done")"
   echo "--- backup: reusing ${BK}"
 else
-  BK="$HERE/backup-$STAMP"; mkdir -p "$BK"
+  BK="$ROOT/backup-$STAMP"; mkdir -p "$BK"
   echo "--- backup (APFS clone) -> ${BK}"
   cp -Rpc "$APP_NEW" "$BK/app-data" 2>"$BK/.err1" || true
   cp -Rpc "$HOME/.claude" "$BK/dot-claude" 2>"$BK/.err2" || true
@@ -97,7 +104,7 @@ else
     [ "$a" = "$b" ] || FAIL=1
   done
   [ "${FAIL}" -eq 0 ] || die "backup file counts differ (source untouched, safe). Nothing was written."
-  echo "$BK" > "$HERE/.backup-done"
+  echo "$BK" > "$ROOT/.backup-done"
   echo "OK backup verified"
 fi
 
@@ -166,10 +173,10 @@ done
 # ------------------------------------------------------------- tasks
 echo "--- scheduled tasks (imported DISABLED)"
 cp -p "${TASK_DST}" "${TASK_DST}.pre-import-backup-${STAMP}"
-cp -p "${TASK_SRC}" "$HERE/source-tasks-${STAMP}.json"
+cp -p "${TASK_SRC}" "$ROOT/source-tasks-${STAMP}.json"
 
 set +e
-python3 - "${TASK_SRC}" "${TASK_DST}" "$HERE/source-enabled-tasks-${STAMP}.txt" <<'PY'
+python3 - "${TASK_SRC}" "${TASK_DST}" "$ROOT/source-enabled-tasks-${STAMP}.txt" <<'PY'
 import json, sys, os, datetime
 src, dst, report = sys.argv[1:4]
 now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")

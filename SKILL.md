@@ -54,6 +54,12 @@ These mirror the safety design of the scripts in `scripts/`. Do not skip them.
 
 ## Procedure
 
+> **Where the scripts live.** Everything below refers to `scripts/…` **relative to the
+> claude-migration-kit repository**, not to this skill's own folder. If this skill was installed by
+> copying only `SKILL.md` into `~/.claude/skills/`, ask the user for the path to the cloned repo and
+> run the scripts from there (they resolve their own directory, so an absolute path works fine).
+> Verify with `ls <repo>/scripts/`.
+
 ### Step 0 — Reconnaissance (read-only, safe while Claude runs)
 
 1. Identify the app data directory/directories in play:
@@ -101,7 +107,20 @@ Ask the user to confirm, in the UI:
 - Cowork chats are back.
 
 Then restore the enabled/disabled state **from the list you saved in step 0.4** — not from your own
-guess about what "should" run.
+guess about what "should" run. **Stage it:**
+
+```bash
+bash scripts/restore-enabled.sh --dry-run     # show what would change; writes nothing
+bash scripts/restore-enabled.sh --limit 5     # first small batch; watch one actually run
+bash scripts/restore-enabled.sh --limit 20    # more
+bash scripts/restore-enabled.sh               # the rest
+```
+
+Staging matters because a broken dependency (auth, browser bridge, quota) shows up as many failures
+at once if you enable everything together — you lose the signal. `--limit N` takes the first N of the
+source list, which is deliberately neutral: do **not** reorder by task name to put "safe-looking"
+tasks first. The script leaves the missed-run floor in place, so enabling later still cannot fire a
+backlog.
 
 ### Step 4 — Browser automation
 

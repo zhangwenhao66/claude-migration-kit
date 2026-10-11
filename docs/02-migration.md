@@ -97,12 +97,45 @@ publishes a blog post, posts to social media, or sends outreach email, that is *
 and a burst of them can blow through your API quota in seconds. The stamp removes the missed
 window entirely.
 
-**Restoring the enabled state.** Now use the enabled-task list you saved in step 0:
+**Restoring the enabled state.** Now use the enabled-task list you saved in step 0.
+
+**Do it in batches, not all at once.** Turning every task live in one go means a broken dependency
+(an auth that did not survive, a browser bridge that is not connected, a quota that is exhausted)
+shows up as many failed tasks at once, with no clean signal about which part broke. Staging makes
+the failure legible.
+
+```bash
+# 1. See what would happen — writes nothing
+bash scripts/restore-enabled.sh --dry-run
+
+# 2. Enable a small first batch and let it run
+bash scripts/restore-enabled.sh --limit 5
+
+# 3. Watch one or two of those actually run (from the Routines list, or wait for their cron).
+#    If they behave, enable more:
+bash scripts/restore-enabled.sh --limit 20
+bash scripts/restore-enabled.sh            # the rest
+```
+
+`--only a,b,c` enables exactly the ids you name, if you would rather pick the first batch yourself.
+
+Two things this does **not** do, on purpose:
+
+- it does not touch `lastScheduledFor` / `missedRunScanFloor`, so enabling a task later still cannot
+  fire a backlog of missed windows;
+- it does not rank tasks for you. `--limit N` takes the first N of the source list, which is
+  neutral. **Do not** reorder by task name to put "safe-looking" tasks first — a task name says what
+  a task does, not whether it is safe in *your* setup.
+
+You can also toggle tasks by hand in the Routines list — but apply **the same set**:
 
 - enable exactly the tasks that were `enabled: true` in the source,
 - leave everything else disabled,
 - **do not** decide for yourself which tasks "should" run. What was paused was paused for a reason
   (a frozen site, a banned account, a walled page, a quality debt). Task names do not tell you that.
+
+The script also warns if any enabled task lacks a missed-run floor, and reports ids from the list
+that do not exist in the new account (they were deleted, or never imported).
 
 Restore in batches if you like, but restore *the same set*.
 
