@@ -1,0 +1,14 @@
+# Local configuration (contains your account/org UUIDs)
+scripts/config.sh
+
+# Migration artifacts — these contain YOUR data, never commit them
+backup-*/
+manifest-sessions.txt
+manifest-cowork.txt
+migration-*.log
+source-tasks-*.json
+source-enabled-tasks-*.txt
+.backup-done
+
+# OS noise
+.DS_Store

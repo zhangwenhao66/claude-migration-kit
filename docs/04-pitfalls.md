@@ -1,0 +1,147 @@
+# 04 — Pitfalls
+
+Every item here cost real debugging time. Read it before you migrate.
+
+## Data & safety
+
+### The App must be fully quit before you touch its data
+
+The app holds scheduling state in memory and writes it back on exit. Modifying
+`scheduled-tasks.json` while it runs means your changes get overwritten. ⌘Q is not always enough —
+check for a menu-bar process. A guard that greps for `Claude.app` processes will produce **false
+positives** on macOS: `chrome-native-host` lives inside `Claude.app` but is started by Chrome and
+does not touch session data. Exclude it (and `chrome_crashpad_handler`), or the guard will block
+forever.
+
+### Copy, never move
+
+If the migration only ever copies, then rollback is always available and a mistake can never lose
+data. This is worth more than any clever optimisation.
+
+### Verify the backup
+
+A backup whose file count you did not check is not a backup. Compare source and backup file counts
+and abort if they differ. Use APFS clones (`cp -c` on macOS) so a 20 GB backup costs seconds and
+almost no extra disk.
+
+### Do not overwrite the archive index
+
+`archived-sessions.idx` looks like state you should copy. It is not — the App **rebuilds it** from
+each session's `isArchived` flag. Copying an older one over a newer one can only hurt.
+
+## Scheduled tasks — the dangerous part
+
+### Missed-run catch-up will fire your tasks at restore
+
+Claude Desktop catches up on windows it "missed" while a task was disabled. If you import 50
+enabled tasks whose `lastScheduledFor` is a week old, restoring can fire a week of publishing,
+posting and outreach in one burst. **Irreversible**, and it will exhaust API quota.
+
+Always: import with `enabled = false` **and** stamp `lastScheduledFor` and `missedRunScanFloor` to
+the import time.
+
+### Never decide for yourself which tasks should be enabled
+
+The authoritative list is the **source** partition's `scheduledTasks[].enabled`, read *before* the
+import forces everything to `false`.
+
+Do not sort tasks by name and enable them in "sensible" batches. A task name tells you what a task
+*does*; it does not tell you whether it *should run*. Tasks get paused for business reasons — a
+frozen site, a banned social account, a page marked as not-to-be-promoted, a quality debt, a
+pending re-evaluation. Enabling them "because they look harmless" is how you republish to a site you
+were told to leave alone.
+
+Restore exactly the set that was enabled, and only after the user confirms.
+
+### Do not assume a task's model field is valid on the new deployment
+
+Third-party deployments may expose a different model catalog. Check that the model ids referenced in
+`scheduled-tasks.json` exist; a task with an unknown model may fail at run time.
+
+## Sessions
+
+### "Most of my sessions didn't migrate" — probably not
+
+Two categories never appear in the sidebar folder list:
+
+- **archived** sessions (hidden by design; visible only in the archive),
+- **routine-spawned** sessions (they appear under **Routines**, and only after their routine is
+  imported).
+
+In a heavily automated setup, the large majority of sessions are routine-spawned. If you copied
+2,000 and 150 show up, that is expected. Explain this **before** the user panics — it is the single
+most common false alarm.
+
+### Routine sessions need their task imported first
+
+A session with a `scheduledTaskId` has nowhere to hang until that task exists. Import tasks and they
+appear. If you are doing a partial test copy, pick **non-routine** sessions, or the test will look
+like a failure.
+
+### Cowork lives in a separate partition with different names
+
+The Cowork partition (`local-agent-mode-sessions/`) is a different tree from the Code partition. In
+3p mode its account and org directory names are **truncated** (8 characters) while the Code
+partition uses the full UUIDs. Always `ls` the target directory rather than constructing the path.
+
+### A test copy proves the mechanism
+
+Whether the App accepts foreign session files cannot be proven from disk. Copy ~20 files first,
+reopen the App, and look. It costs nothing and de-risks the whole migration.
+
+## Accounts, plans and capabilities
+
+### File presence is not capability
+
+Pairing, OAuth, and published resources are **service-side relationships**, not files. Copying a
+config that references a paired Chrome extension does not re-pair it. Verify capability by *using*
+it, not by checking that a config key exists.
+
+### The official Chrome extension needs a paid plan
+
+After an account change it shows *"Claude in Chrome requires a paid plan"*, and no amount of local
+configuration fixes that. Use a bridge instead — see [docs/03](03-browser-bridge.md).
+
+### Plugins are account-synced
+
+Marketplace plugins cannot be migrated by copying files; the manifest is refreshed from the server.
+Reinstall them from the marketplace.
+
+### Genuinely unrecoverable
+
+Published Artifacts and claude.ai web chats are tied to the old account. Say so plainly instead of
+letting the user keep hoping.
+
+## Shell-script landmines
+
+These are not specific to migration, but they are exactly the kind of bug that makes a migration
+script fail silently.
+
+### `set -euo pipefail` + `cmd | head` = silent abort
+
+With `pipefail`, `ls -t ... | head -10` fails with SIGPIPE (exit 141) as soon as `ls` writes more
+than `head` reads, and `set -e` then aborts the whole script **without printing anything**. Use
+`find … | sed -n '1,10p'`, or take the whole list and slice it in the language of your choice.
+
+### `$VAR` followed by a non-ASCII character
+
+In a UTF-8 locale, bash treats a following non-ASCII character as part of the variable name. A
+Chinese or accented character right after `$VAR` makes bash look for a variable that does not
+exist, and under `set -u` the script dies. Always write `${VAR}`. This reproduces only in some
+locales, so a CI sandbox running under `LC_ALL=C` will not catch it.
+
+### Empty glob → `"0\n0"`
+
+`ls dir/*.json 2>/dev/null | wc -l || echo 0` outputs `0` **and** `0` when the directory is empty,
+because `wc` already succeeded. Use `find dir -maxdepth 1 -name '*.json' | wc -l`.
+
+### A "check passed" that actually checked nothing
+
+A health check that parses files with a regex tuned to one format will silently skip files in
+another format — and a skipped object looks identical to a passing one. Always print
+"expected N / checked M / skipped K", and treat "skipped" as **not checked**, never as "passed".
+
+## Reporting
+
+Report each item as **passed / failed / not checked**. "The files are there" is not "it works". A
+config check is not a connection check. A local build is not a deployment.
