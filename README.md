@@ -102,7 +102,12 @@ Browser automation is a separate chapter: [docs/03-browser-bridge.md](docs/03-br
 
 macOS, `bash`, `python3`, Claude Desktop. For the browser bridge: Node.js ≥ 18 and Chrome.
 
-### License
+### Contributing
+
+Found a problem this kit doesn't warn about? That is the most useful thing you can report —
+see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
 
 MIT — see [LICENSE](LICENSE).
 
@@ -204,6 +209,10 @@ bash scripts/restore-enabled.sh --limit 5
 
 macOS、`bash`、`python3`、Claude Desktop。浏览器桥接另需 Node.js ≥ 18 与 Chrome。
 
-### 许可
+### 参与贡献
+
+如果你踩到了这个项目没提醒的坑——那是最有价值的反馈，见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可
 
 MIT —— 见 [LICENSE](LICENSE)。

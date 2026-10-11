@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Read the pitfalls first
+    url: https://github.com/zhangwenhao66/claude-migration-kit/blob/main/docs/04-pitfalls.md
+    about: Many "broken" symptoms are expected behaviour — check here before filing.
