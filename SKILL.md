@@ -129,17 +129,41 @@ invisible until a task runs: server-side tools (WebSearch) are provided by the g
 be disabled there, the model catalog may differ, and rate limits are the gateway's. Verify web
 search from a *scheduled task*, not just interactively — it can work in one and fail in the other.
 
-### Step 4 — Browser automation
+### Step 4 — Browser automation (walk them through it, do not just link the doc)
 
-This is where most migrations silently break. Chrome extension pairing is **account-scoped**, so it
-does not survive. And the official *Claude for Chrome* extension requires a **paid plan**, which a
-gateway account usually cannot satisfy.
+This is where most migrations silently break, and it is the step the user will ask about. **Do it
+with them**, in three short steps, instead of pointing at a document and moving on.
 
-`docs/03-browser-bridge.md` documents a working, free alternative: the
-[`mcp-chrome-bridge`](https://www.npmjs.com/package/mcp-chrome-bridge) extension + MCP server,
-which drives the user's own Chrome (with their logins) and needs no Anthropic account. That doc
-also lists the non-obvious fixes required to make it usable (single-instance bug, a hanging tool,
-focus stealing, robot-detectable clicks, accidental new windows).
+Why the official route is dead: the Chrome extension Claude Desktop normally drives requires a
+**paid Anthropic plan**, and its pairing is account-scoped anyway, so it does not survive the
+switch. On a gateway account it shows *"Claude in Chrome requires a paid plan."*
+
+Use the free alternative: [`mcp-chrome-bridge`](https://www.npmjs.com/package/mcp-chrome-bridge),
+a Chrome extension plus a local MCP server that drives **the user's own Chrome** (with their
+existing logins) and needs no Anthropic account. Full detail in `docs/03-browser-bridge.md`.
+
+**Three things the user does by hand. Everything else you do for them.**
+
+1. **Install and load the extension.** You run `npm install -g mcp-chrome-bridge`, then
+   `mcp-chrome-bridge register --detect` and `mcp-chrome-bridge doctor` (expect all-OK and
+   `127.0.0.1:12306` listening). Then ask the user to open `chrome://extensions`, turn on Developer
+   mode, click "Load unpacked", and pick the extension folder shipped with the package.
+2. **Click Connect** in the extension popup. Only the user can do this.
+3. **Register the MCP server with Claude.** One server, and you do it.
+
+Then have them run the end-to-end check at the end of `docs/03-browser-bridge.md` (open
+`https://example.com`, read the title) and confirm **their own active tab did not change**.
+
+**Two things that will bite you:**
+
+- never name the MCP server `claude-in-chrome` — Claude Code treats that name as reserved and
+  silently refuses to load it;
+- register **exactly one** browser MCP. With two, the agent may call the raw one and every default
+  is bypassed, so focus stealing comes back and windows start multiplying.
+
+**Apply the five fixes in `docs/03-browser-bridge.md` yourself** (single-instance bug, the hanging
+`chrome_read_page`, `background: true`, hover-before-click, no `newWindow`/`width`/`height`).
+Without them the bridge connects but is unusable, and the user will conclude it is broken.
 
 Full checklist for steps 3–4: `docs/05-verification.md`.
 
