@@ -20,6 +20,11 @@
 [CC Switch](https://github.com/farion1231/cc-switch) 之类的第三方网关账号），让你继续用**完全一样**的
 环境：同样的会话、同样的定时任务、同样的技能、同样的记忆、同样的浏览器自动化。
 
+> **反方向也做了一个**：用网关模式跑了一段时间，现在想回到自己的 Anthropic 账号？
+> 用 [`claude-restore-kit`](https://github.com/zhangwenhao66/claude-restore-kit)。
+> 往回搬不只是把命令反过来跑一遍——目标分区是活的（要按 id 合并任务，不是覆盖），
+> 而且机器上还留着网关的环境变量，不清掉的话登录了也照样走网关。
+
 > 在 macOS 上实测跑通。原理与平台无关，但路径在 Linux/Windows 上不同。
 
 ### 核心原理
@@ -124,6 +129,12 @@ This kit is a **skill + scripts** that move everything from the old account into
 including a third-party gateway account (e.g. via [CC Switch](https://github.com/farion1231/cc-switch))
 — so you keep working in the exact same environment: same sessions, same routines, same skills, same
 memory, same browser automation.
+
+> **There is a repo for the other direction.** Been on a gateway for a while and want to move back
+> onto a real Anthropic account? Use
+> [`claude-restore-kit`](https://github.com/zhangwenhao66/claude-restore-kit). It is not this one run
+> backwards: the target partition is live (tasks are merged by id, not overwritten), and the machine
+> keeps gateway environment variables that make a fresh login still route to the gateway.
 
 > Battle-tested on macOS. The technique is platform-independent; paths differ on Linux/Windows.
 
