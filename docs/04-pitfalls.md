@@ -186,3 +186,53 @@ another format — and a skipped object looks identical to a passing one. Always
 
 Report each item as **passed / failed / not checked**. "The files are there" is not "it works". A
 config check is not a connection check. A local build is not a deployment.
+
+---
+
+## Fixed 2026-10-16 (a separate audit found these)
+
+These were real, and they are documented here because the fixes change behaviour you may be
+relying on. The same five were found in the sibling kit and fixed in both.
+
+### A reused backup was not always a backup
+
+`.backup-done` stored an absolute path and nothing re-checked it. Delete `backup-*` to free space
+— a normal thing to do between `test` and `all` — or move the repo, and the next run printed
+`reusing <a path that no longer exists>` and then wrote into a live partition **with no backup at
+all**, exiting 0. It now checks the directory exists and still has `app-data` and `dot-claude`.
+
+### "Claude is still running" when it was not
+
+The guard matched the **full command line**, so it counted Squirrel's auto-updater
+(`.../Squirrel.framework/Resources/ShipIt`), which is inside the bundle and can outlive a ⌘Q, and
+any process whose *arguments* merely mentioned `Applications/Claude.app` — a shell running
+`ps aux | grep Applications/Claude.app` matched itself. It now matches the executable path
+(`ps -o comm=`) and names ShipIt explicitly. See `scripts/lib-appguard.sh`.
+
+### Same-named sessions were skipped silently
+
+If the target already had a `local_*.json` with the same name, the copy was skipped and the only
+trace was a number in `skipped=N`. When the source's copy is the newer one, that silently discards
+the newer state. Now each same-named file is resolved on its own: identical → left alone; source
+newer → replaced, with the target's copy parked in `replaced-sessions/<stamp>/`; target newer or
+unparseable → the target's copy is kept and written to `conflicts-<stamp>.txt`.
+
+### Rollback could delete things it did not create
+
+The session loop had a "changed since the migration" guard; the Cowork loop did not, and
+`migrate.sh` recorded a Cowork workspace directory in the manifest even when it had just decided
+not to copy it. Rollback could therefore delete a directory it had never touched. Rollback now
+requires the source twin to exist and match before deleting anything, and only directories that
+were actually copied are recorded.
+
+### `archived-sessions.idx` / `backlog` were copied but not tracked
+
+They were copied into the target and never written to a manifest, so `rollback.sh` could not undo
+the copy — it only recognised `local_*.json`. They are now recorded, and rollback accepts them.
+
+### If the target had no `scheduled-tasks.json`, rollback did not undo the import
+
+`migrate.sh` writes a `.pre-import-backup-*` only when there is a file to back up; with none,
+`rollback.sh` found nothing and skipped the whole task section, leaving the imported file behind.
+`migrate.sh` now leaves a `.tasks-created-by-restore` marker and rollback deletes the file it
+created.

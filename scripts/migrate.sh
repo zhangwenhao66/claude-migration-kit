@@ -72,24 +72,30 @@ echo "OK preflight"
 
 # ------------------------------------------------------------- app guard
 # The app must be fully quit: it caches scheduling state in memory and writes it back on exit.
-if pgrep -f "Applications/Claude.app" >/dev/null 2>&1; then
-  LIVE=0
-  for p in $(pgrep -f "Applications/Claude.app" 2>/dev/null || true); do
-    cmd="$(ps -o command= -p "$p" 2>/dev/null || true)"
-    [ -n "$cmd" ] || continue
-    case "$cmd" in
-      *chrome-native-host*)       continue ;;  # started by Chrome, holds no Claude data
-      *chrome_crashpad_handler*)  continue ;;  # crash reporter
-    esac
-    LIVE=$((LIVE+1))
-  done
-  [ "${LIVE}" -eq 0 ] || die "Claude Desktop is still running (${LIVE} processes). Quit it with ⌘Q and retry."
-fi
+# claude_app_pids() ignores the helpers that are not the app. See scripts/lib-appguard.sh for
+# why matching the executable path matters: `ps -o command=` matched Squirrel's auto-updater and
+# any process whose *arguments* merely contained the path.
+# shellcheck source=/dev/null
+source "$HERE/lib-appguard.sh"
+LIVE="$(claude_app_pids | wc -l | tr -d ' ')"
+[ "${LIVE}" -eq 0 ] || die "Claude Desktop is still running (${LIVE} process(es)). Quit it with ⌘Q and retry."
 echo "OK Claude is not running"
 
 # ------------------------------------------------------------- backup
+# A reused backup is only a backup if it is still there. Deleting backup-* to free space, or
+# moving the repo, otherwise left .backup-done pointing at a path that no longer existed, and the
+# run wrote into a live partition with no backup at all while reporting success.
+BK=""
 if [ -f "$ROOT/.backup-done" ]; then
-  BK="$(cat "$ROOT/.backup-done")"
+  CAND="$(cat "$ROOT/.backup-done" 2>/dev/null || true)"
+  if [ -n "${CAND}" ] && [ -d "${CAND}/app-data" ] && [ -d "${CAND}/dot-claude" ]; then
+    BK="${CAND}"
+  else
+    echo "--- backup: previous backup at '${CAND:-<empty>}' is gone or incomplete; making a new one"
+    rm -f "$ROOT/.backup-done"
+  fi
+fi
+if [ -n "${BK}" ]; then
   echo "--- backup: reusing ${BK}"
 else
   BK="$ROOT/backup-$STAMP"; mkdir -p "$BK"
@@ -138,16 +144,108 @@ else
   LIST="$(find "${CODE_SRC}" -maxdepth 1 -name 'local_*.json' -exec basename {} \;)"
 fi
 
-for b in ${LIST}; do
-  if [ -e "${CODE_DST}/${b}" ]; then SKIPPED=$((SKIPPED+1)); continue; fi
-  if cp -p "${CODE_SRC}/${b}" "${CODE_DST}/${b}"; then
-    echo "${CODE_DST}/${b}" >> "$MAN_S"; COPIED=$((COPIED+1))
-  else
-    FAILED=$((FAILED+1))
-  fi
-done
-echo "    copied=${COPIED} skipped=${SKIPPED} failed=${FAILED}"
-[ "${FAILED}" -eq 0 ] || die "some copies failed; do not continue"
+# Same-named files are the norm here, not an edge case: on the machine this kit was written on
+# all 2847 target sessions also existed in the source. Most are byte-identical, but a third of
+# the differing ones had a NEWER source — the session had been used on the gateway since the
+# account last saw it. Skipping those silently threw away the newer state (completedTurns, model,
+# lastAssistantUuid, publishedArtifacts, lastActivityAt). Decide per file, and never lose either
+# copy: the target's version is parked in replaced-sessions/<stamp>/ before it is overwritten.
+DEC_FILE="$ROOT/.decisions-$STAMP"
+NAMES_FILE="$ROOT/.names-$STAMP"
+REPL_DIR="$ROOT/replaced-sessions/$STAMP"
+CONF_FILE="$ROOT/conflicts-$STAMP.txt"
+MAN_R="$ROOT/manifest-replaced.txt"
+
+# The name list goes through a file, not a pipe: `python3 - <<'PY'` already consumes stdin with
+# the heredoc, so anything piped in would be silently dropped.
+printf '%s\n' ${LIST} > "$NAMES_FILE"
+python3 - "${CODE_SRC}" "${CODE_DST}" "$NAMES_FILE" > "$DEC_FILE" <<'PY'
+import json, os, sys
+
+src, dst, names_file = sys.argv[1], sys.argv[2], sys.argv[3]
+
+
+def activity(path):
+    try:
+        with open(path, "rb") as fh:
+            j = json.load(fh)
+    except Exception:
+        return None
+    v = j.get("lastActivityAt") or j.get("createdAt")
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+for name in open(names_file, encoding="utf-8").read().splitlines():
+    name = name.strip()
+    if not name:
+        continue
+    a, b = os.path.join(src, name), os.path.join(dst, name)
+    if not os.path.exists(b):
+        print(f"{name}\tADD")
+        continue
+    try:
+        if open(a, "rb").read() == open(b, "rb").read():
+            print(f"{name}\tSAME")
+            continue
+    except OSError:
+        print(f"{name}\tKEEP_UNREADABLE")
+        continue
+    ta, tb = activity(a), activity(b)
+    if ta is None or tb is None:
+        # Cannot tell which is newer -> do not guess. Keep the target's, report it.
+        print(f"{name}\tKEEP_UNREADABLE")
+    elif ta > tb:
+        print(f"{name}\tREPLACE")
+    else:
+        print(f"{name}\tKEEP_TARGET_NEWER")
+PY
+
+COPIED=0; SKIPPED=0; FAILED=0; REPLACED=0; KEPT=0
+while IFS="$(printf '\t')" read -r b decision; do
+  [ -n "${b}" ] || continue
+  case "${decision}" in
+    ADD)
+      if cp -p "${CODE_SRC}/${b}" "${CODE_DST}/${b}"; then
+        echo "${CODE_DST}/${b}" >> "$MAN_S"; COPIED=$((COPIED+1))
+      else
+        FAILED=$((FAILED+1))
+      fi
+      ;;
+    SAME)
+      SKIPPED=$((SKIPPED+1))
+      ;;
+    REPLACE)
+      mkdir -p "$REPL_DIR"
+      if ! cp -p "${CODE_DST}/${b}" "${REPL_DIR}/${b}"; then FAILED=$((FAILED+1)); continue; fi
+      printf '%s\t%s\n' "${CODE_DST}/${b}" "${REPL_DIR}/${b}" >> "$MAN_R"
+      if cp -p "${CODE_SRC}/${b}" "${CODE_DST}/${b}"; then
+        REPLACED=$((REPLACED+1))
+      else
+        FAILED=$((FAILED+1))
+      fi
+      ;;
+    KEEP_TARGET_NEWER|KEEP_UNREADABLE)
+      KEPT=$((KEPT+1)); echo "${CODE_DST}/${b}  (${decision})" >> "$CONF_FILE"
+      ;;
+    *)
+      SKIPPED=$((SKIPPED+1))
+      ;;
+  esac
+done < "$DEC_FILE"
+
+echo "    copied=${COPIED} identical=${SKIPPED} replaced=${REPLACED} kept-target=${KEPT} failed=${FAILED}"
+if [ "${REPLACED}" -gt 0 ]; then
+  echo "    ${REPLACED} session(s) were UPDATED from the source; the target's older copy of each is"
+  echo "    parked in replaced-sessions/${STAMP}/ and listed in manifest-replaced.txt."
+fi
+if [ "${KEPT}" -gt 0 ]; then
+  echo "    ${KEPT} session(s) differ and the TARGET's copy was kept (it was newer, or the pair"
+  echo "    could not be compared). Details: $(basename "$CONF_FILE")"
+fi
+[ "${FAILED}" -eq 0 ] || die "some copies failed; do not continue. Nothing else was written; sessions already copied can be undone with: bash rollback.sh"
 echo "    target now $(cnt "${CODE_DST}") sessions; source still $(cnt "${CODE_SRC}")"
 [ "$(cnt "${CODE_SRC}")" = "${SRC_N}" ] || die "source session count changed!"
 
@@ -163,17 +261,27 @@ EOF
   exit 0
 fi
 
-# bring along archive/backlog state if present and not already there
+# bring along archive/backlog state if present and not already there.
+# Recorded in the manifest, or rollback cannot undo the copy.
 for extra in archived-sessions.idx backlog; do
-  if [ -e "${CODE_SRC}/${extra}" ] && [ ! -e "${CODE_DST}/${extra}" ]; then
+  [ -e "${CODE_SRC}/${extra}" ] || continue
+  if [ ! -e "${CODE_DST}/${extra}" ]; then
     cp -Rp "${CODE_SRC}/${extra}" "${CODE_DST}/${extra}"
+    echo "${CODE_DST}/${extra}" >> "$MAN_S"
     echo "    carried over ${extra}"
+  elif ! diff -rq "${CODE_SRC}/${extra}" "${CODE_DST}/${extra}" >/dev/null 2>&1; then
+    echo "    NOTE: ${extra} exists on both sides and differs; the target's copy was kept."
   fi
 done
 
 # ------------------------------------------------------------- tasks
 echo "--- scheduled tasks (imported DISABLED)"
-cp -p "${TASK_DST}" "${TASK_DST}.pre-import-backup-${STAMP}"
+if [ -f "${TASK_DST}" ]; then
+  cp -p "${TASK_DST}" "${TASK_DST}.pre-import-backup-${STAMP}"
+else
+  echo "    (no target scheduled-tasks.json to back up; a new one will be created)"
+  echo "${TASK_DST}" > "$ROOT/.tasks-created-by-restore"
+fi
 cp -p "${TASK_SRC}" "$ROOT/source-tasks-${STAMP}.json"
 
 set +e
@@ -211,21 +319,41 @@ if [ "${MIGRATE_COWORK:-0}" = "1" ]; then
   CL="$(find "${COW_SRC}" -maxdepth 1 -name 'local_*.json' -exec basename {} \;)"
   for b in ${CL}; do
     stem="${b%.json}"
-    [ -f "${COW_DST}/${b}" ] && continue
-    cp -c "${COW_SRC}/${b}" "${COW_DST}/${b}" 2>/dev/null || cp "${COW_SRC}/${b}" "${COW_DST}/${b}"
-    if [ -d "${COW_SRC}/${stem}" ] && [ ! -d "${COW_DST}/${stem}" ]; then
-      cp -Rc "${COW_SRC}/${stem}" "${COW_DST}/${stem}" 2>/dev/null || cp -R "${COW_SRC}/${stem}" "${COW_DST}/${stem}"
+    if [ -f "${COW_DST}/${b}" ]; then
+      if ! cmp -s "${COW_SRC}/${b}" "${COW_DST}/${b}"; then
+        echo "    NOTE: ${b} exists on both sides and differs; the target's copy was kept."
+      fi
+      continue
     fi
-    echo "${COW_DST}/${b}" >> "$MAN_C"; echo "${COW_DST}/${stem}" >> "$MAN_C"
+    cp -c "${COW_SRC}/${b}" "${COW_DST}/${b}" 2>/dev/null || cp "${COW_SRC}/${b}" "${COW_DST}/${b}"
+    echo "${COW_DST}/${b}" >> "$MAN_C"
+    # Only record the workspace directory if we actually created it. It used to be appended
+    # unconditionally, even when the directory already existed, so rollback would delete a
+    # directory the migration never touched.
+    if [ -d "${COW_SRC}/${stem}" ]; then
+      if [ ! -e "${COW_DST}/${stem}" ]; then
+        cp -Rc "${COW_SRC}/${stem}" "${COW_DST}/${stem}" 2>/dev/null || cp -R "${COW_SRC}/${stem}" "${COW_DST}/${stem}"
+        echo "${COW_DST}/${stem}" >> "$MAN_C"
+      else
+        echo "    NOTE: ${stem}/ exists on both sides; the target's workspace was kept (not merged)."
+      fi
+    fi
     n=$((n+1))
   done
   for e in spaces spaces.json; do
-    if [ -e "${COW_SRC}/${e}" ] && [ ! -e "${COW_DST}/${e}" ]; then
+    [ -e "${COW_SRC}/${e}" ] || continue
+    if [ ! -e "${COW_DST}/${e}" ]; then
       cp -Rc "${COW_SRC}/${e}" "${COW_DST}/${e}" 2>/dev/null || cp -R "${COW_SRC}/${e}" "${COW_DST}/${e}"
       echo "${COW_DST}/${e}" >> "$MAN_C"
+    elif [ -f "${COW_SRC}/${e}" ] && ! cmp -s "${COW_SRC}/${e}" "${COW_DST}/${e}"; then
+      echo "    NOTE: ${e} exists on both sides and differs; the source copy was NOT merged."
+    elif [ -d "${COW_SRC}/${e}" ] && ! diff -rq "${COW_SRC}/${e}" "${COW_DST}/${e}" >/dev/null 2>&1; then
+      echo "    NOTE: ${e}/ exists on both sides and differs; the source copy was NOT merged."
     fi
   done
   echo "    copied ${n} Cowork sessions"
+  echo "    note: only local_* sessions and spaces/spaces.json are handled. Anything else in the"
+  echo "          Cowork partition (memory/, usage-ledger/, workspace dirs, settings) is NOT copied."
 fi
 
 echo

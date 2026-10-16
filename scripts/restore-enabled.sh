@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# Re-enable scheduled tasks that were enabled in the SOURCE account — optionally in batches.
+# Re-enable scheduled tasks, from a list, optionally in batches.
 #
-# migrate.sh imports every task with enabled=false (so nothing fires during migration) and writes
-# the list of tasks that were enabled in the source to source-enabled-tasks-<stamp>.txt.
-# This script applies that list, without touching lastScheduledFor / missedRunScanFloor, so the
-# missed-run window stays closed and nothing is caught up retroactively.
+# migrate.sh imports every task with enabled=false (so nothing fires during the migration) and
+# writes the list of tasks that were ENABLED in the source to source-enabled-tasks-<stamp>.txt.
+# This script applies a list like that, without touching lastScheduledFor / missedRunScanFloor,
+# so the missed-run window stays closed and nothing is caught up retroactively.
+#
+# (The sibling kit claude-restore-kit also writes target-was-enabled-<stamp>.txt, because a
+# migration back INTO a live account can switch the account's own routines off. Nothing here
+# produces that file, so it is not mentioned below.)
+#
+# Either way lastScheduledFor / missedRunScanFloor are left alone, so the missed-run window stays
+# closed and nothing is caught up retroactively.
 #
 # Usage:
-#   bash restore-enabled.sh --dry-run          show what would be enabled, change nothing
-#   bash restore-enabled.sh --limit 10         enable only the first 10 (verify, then run again)
-#   bash restore-enabled.sh --only a,b,c       enable exactly these task ids
-#   bash restore-enabled.sh                    enable everything in the list
+#   bash restore-enabled.sh --dry-run
+#   bash restore-enabled.sh --limit 10
+#   bash restore-enabled.sh --only a,b,c
+#   bash restore-enabled.sh --from <a list file you name>
+#   bash restore-enabled.sh <path-to-any-list-file>
 #
 # Requires Claude Desktop to be quit (it caches scheduling state in memory).
 set -euo pipefail
@@ -30,57 +38,65 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1 ;;
     --limit)   shift; LIMIT="${1:-}" ;;
     --only)    shift; ONLY="${1:-}" ;;
+    --from)    shift; LIST="${1:-}" ;;
     -*)        echo "unknown option: $1" >&2; exit 1 ;;
     *)         LIST="$1" ;;
   esac
   shift
 done
 
-if [ -z "${LIST}" ]; then
+# --only names ids explicitly, so it does not need a list file at all.
+if [ -z "${LIST}" ] && [ -z "${ONLY}" ]; then
   LIST="$(find "$ROOT" -maxdepth 1 -name 'source-enabled-tasks-*.txt' | sort | tail -1)"
 fi
-[ -n "${LIST}" ] && [ -f "${LIST}" ] || {
-  echo "No source-enabled-tasks-*.txt found. Pass one explicitly:" >&2
-  echo "  bash restore-enabled.sh /path/to/source-enabled-tasks-<stamp>.txt" >&2
-  exit 1
-}
+if [ -z "${ONLY}" ]; then
+  if [ -z "${LIST}" ] || [ ! -f "${LIST}" ]; then
+    echo "No list file found. Either let restore.sh write one, or name one explicitly:" >&2
+    echo "  bash restore-enabled.sh --from source-enabled-tasks-<stamp>.txt   # was running on the gateway" >&2
+    echo "  bash restore-enabled.sh --from <a list file you name>     # was running in the account" >&2
+    echo "  bash restore-enabled.sh --only id1,id2,id3                        # exactly these" >&2
+    exit 1
+  fi
+fi
 
-echo "list   : $(basename "${LIST}")"
+echo "list   : ${LIST:-<none, --only was given>}"
 echo "target : ${CODE_DST}/scheduled-tasks.json"
 [ "${DRY}" = "1" ] && echo "mode   : DRY RUN (nothing will be written)"
 
 if [ "${DRY}" = "0" ]; then
-  if pgrep -f "Applications/Claude.app" >/dev/null 2>&1; then
-    LIVE=0
-    for p in $(pgrep -f "Applications/Claude.app" 2>/dev/null || true); do
-      cmd="$(ps -o command= -p "$p" 2>/dev/null || true)"
-      case "$cmd" in *chrome-native-host*|*chrome_crashpad_handler*) continue ;; esac
-      LIVE=$((LIVE+1))
-    done
-    [ "${LIVE}" -eq 0 ] || { echo "Claude Desktop is still running. Quit it first (⌘Q)." >&2; exit 1; }
-  fi
+  # shellcheck source=/dev/null
+  source "$HERE/lib-appguard.sh"
+  LIVE="$(claude_app_pids | wc -l | tr -d ' ')"
+  [ "${LIVE}" -eq 0 ] || { echo "Claude Desktop is still running. Quit it first (⌘Q)." >&2; exit 1; }
 fi
 
-python3 - "${CODE_DST}/scheduled-tasks.json" "${LIST}" "${DRY}" "${LIMIT}" "${ONLY}" <<'PY'
+python3 - "${CODE_DST}/scheduled-tasks.json" "${LIST:-}" "${DRY}" "${LIMIT}" "${ONLY}" <<'PY'
 import json, sys, os
 
 tasks_file, list_file, dry, limit, only = sys.argv[1:6]
 dry = dry == "1"
 
-# --- read the wanted list (one task id per line; tolerate a leading "- " and comment lines)
+# --- read the wanted list: one task id per line, "- id" tolerated, "#" and blank lines skipped
 wanted = []
-for line in open(list_file, encoding="utf-8"):
-    line = line.rstrip("\n").strip()
-    if not line or line.endswith(":") or line.startswith("#"):
-        continue
-    if line.startswith("- "):
-        line = line[2:].strip()
-    if line:
-        wanted.append(line)
+if list_file:
+    for line in open(list_file, encoding="utf-8"):
+        line = line.rstrip("\n").strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.endswith(":") and " " in line:      # a section header like "added from ...:"
+            continue
+        if line.startswith("- "):
+            line = line[2:].strip()
+        if line:
+            wanted.append(line)
 
+# --only means exactly these ids. It must NOT be intersected with the list first: the ids a user
+# needs to restore after a merge are the account's own, which by definition are not in the
+# gateway's enabled list. (It used to filter the list by the selection, so --only silently
+# enabled nothing and still exited 0.)
 if only:
-    sel = {x.strip() for x in only.split(",") if x.strip()}
-    wanted = [w for w in wanted if w in sel]
+    wanted = [x.strip() for x in only.split(",") if x.strip()]
+
 if limit:
     try:
         n = int(limit)
@@ -100,8 +116,9 @@ print(f"  in list     : {len(wanted)}")
 print(f"  will enable : {len(to_on)}")
 print(f"  already on  : {len(already)}")
 if missing:
-    print(f"  NOT in target ({len(missing)}): {missing}")
-    print("  (they were deleted or never imported)")
+    print(f"  NOT in target ({len(missing)}) — check these are real task ids:")
+    for m in missing[:20]:
+        print("    -", m)
 
 if dry:
     print("\n  would enable:")
@@ -111,7 +128,10 @@ if dry:
     sys.exit(0)
 
 if not to_on:
-    print("\nNothing to do.")
+    if wanted:
+        print("\nNothing to do — none of the requested ids exist in the target, or all are already on.")
+    else:
+        print("\nNothing to do — the list was empty.")
     sys.exit(0)
 
 for w in to_on:

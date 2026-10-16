@@ -8,6 +8,14 @@ manifest-cowork.txt
 migration-*.log
 source-tasks-*.json
 source-enabled-tasks-*.txt
+.tasks-created-by-restore
+.manifest-*.dedup
+.names-*
+.decisions-*
+conflicts-*.txt
+manifest-replaced.txt
+replaced-sessions/
+target-was-enabled-*.txt
 .backup-done
 
 # OS noise
